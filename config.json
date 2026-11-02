@@ -1,7 +1,7 @@
 {
   "input": "/mnt/nas/raws",
   "output": "/mnt/nas/jpegs",
-  "size": 2048,
+  "size": 0,
   "quality": 85,
   "workers": 0,
   "extensions": [".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw", ".raw"],

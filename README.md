@@ -34,7 +34,7 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o imageconverter .
 
 ## Examples
 
-### Basic conversion (default size 2048px, quality 85)
+### Basic conversion (original dimensions, quality 85)
 ```bash
 ./imageconverter --input /mnt/nas/raws --output /mnt/nas/jpegs
 ```
