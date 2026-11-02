@@ -308,6 +308,7 @@ func main() {
 	verbose := flag.Bool("verbose", false, "Per-file progress")
 	logFile := flag.String("log-file", "", "Write log to file")
 	flag.Parse()
+	_ = *verbose
 
 	if *configPath == "" {
 		*configPath = findConfig()
@@ -378,12 +379,6 @@ func main() {
 	logf := func(format string, args ...any) {
 		fmt.Fprintf(logOut, format+"\n", args...)
 	}
-	vlog := func(format string, args ...any) {
-		if *verbose {
-			logf(format, args...)
-		}
-	}
-
 	logf("Input : %s", *input)
 	logf("Output: %s", *output)
 	if *size > 0 {
@@ -450,10 +445,10 @@ func main() {
 				switch status {
 				case "ok":
 					ok++
-					vlog("OK   : %s", t.src)
+					logf("OK   : %s", t.src)
 				case "skipped":
 					skipped++
-					vlog("SKIP : %s", t.src)
+					logf("SKIP : %s", t.src)
 				default:
 					errors++
 					logf("ERR  : %s -> %v", t.src, err)
