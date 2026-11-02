@@ -368,7 +368,7 @@ func main() {
 	}
 
 	// logging
-	logOut := os.Stdout
+	logOut := os.Stderr
 	if *logFile != "" {
 		f, err := os.Create(*logFile)
 		if err == nil {
