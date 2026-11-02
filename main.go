@@ -208,6 +208,8 @@ func suppressStderr() func() {
 	}
 }
 
+var rawMu sync.Mutex
+
 func convertOne(src, dst string, maxDim, quality int, force bool) (string, error) {
 	if !force {
 		if info, err := os.Stat(dst); err == nil && info.Size() > 0 {
@@ -227,18 +229,20 @@ func convertOne(src, dst string, maxDim, quality int, force bool) (string, error
 	}
 	defer f.Close()
 
+	rawMu.Lock()
 	img, err := raw.Decode(f)
+	var exifSeg []byte
+	if err == nil {
+		if tf, err2 := os.Open(src); err2 == nil {
+			if tb, err3 := raw.ExtractThumbnail(tf); err3 == nil {
+				exifSeg = extractExifSegment(tb)
+			}
+			tf.Close()
+		}
+	}
+	rawMu.Unlock()
 	if err != nil {
 		return "error", err
-	}
-
-	// extract exif segment from embedded thumbnail (best effort)
-	var exifSeg []byte
-	if tf, err := os.Open(src); err == nil {
-		if tb, err := raw.ExtractThumbnail(tf); err == nil {
-			exifSeg = extractExifSegment(tb)
-		}
-		tf.Close()
 	}
 
 	img = resizeImage(img, maxDim)
@@ -295,7 +299,7 @@ func main() {
 	configPath := flag.String("config", "", "Path to JSON config file")
 	input := flag.String("input", "", "Input root path")
 	output := flag.String("output", "", "Output root path")
-	size := flag.Int("size", 0, "Max dimension in pixels (0 = no resize)")
+	size := flag.Int("size", -1, "Max dimension in pixels (0 = no resize, -1 = use config/default)")
 	quality := flag.Int("quality", 0, "JPEG quality 1-100 (0 = use default/config)")
 	workers := flag.Int("workers", 0, "Parallel workers (0 = CPU count)")
 	extsFlag := flag.String("extensions", "", "Comma-separated RAW extensions")
@@ -316,8 +320,12 @@ func main() {
 	if *output == "" && cfg.Output != "" {
 		*output = cfg.Output
 	}
-	if *size == 0 && cfg.Size != 0 {
-		*size = cfg.Size
+	if *size < 0 {
+		if cfg.Size != 0 {
+			*size = cfg.Size
+		} else {
+			*size = 0
+		}
 	}
 	if *quality == 0 {
 		if cfg.Quality != 0 {
