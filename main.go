@@ -459,11 +459,11 @@ func main() {
 					logf("ERR  : %s -> %v", t.src, err)
 				}
 				done := ok + skipped + errors
-				step := total / 20
+				step := total / 100
 				if step < 1 {
 					step = 1
 				}
-				if done%step == 0 || done == total || done == 1 {
+				if done%step == 0 || done == total {
 					logf("Progress: %d/%d (ok=%d skipped=%d errors=%d)", done, total, ok, skipped, errors)
 				}
 				mu.Unlock()
