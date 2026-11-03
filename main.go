@@ -35,6 +35,7 @@ type config struct {
 	Extensions  []string `json:"extensions"`
 	Force       bool     `json:"force"`
 	DryRun      bool     `json:"dry_run"`
+	IgnoreJpeg  bool     `json:"ignore_jpeg"`
 }
 
 type task struct {
@@ -74,8 +75,12 @@ func hasExt(name string, exts map[string]bool) bool {
 	return exts[strings.ToLower(filepath.Ext(name))]
 }
 
-func collectTasks(input, output string, exts map[string]bool) ([]task, error) {
-	var tasks []task
+func collectTasks(input, output string, exts map[string]bool) ([]task, []string, error) {
+	type cand struct {
+		src string
+		dst string
+	}
+	var cands []cand
 	outAbs, _ := filepath.Abs(output)
 	err := filepath.WalkDir(input, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -101,10 +106,63 @@ func collectTasks(input, output string, exts map[string]bool) ([]task, error) {
 		base := strings.TrimSuffix(rel, filepath.Ext(rel))
 		dstRel := base + ".jpg"
 		dst := filepath.Join(output, dstRel)
-		tasks = append(tasks, task{src: path, dst: dst})
+		cands = append(cands, cand{src: path, dst: dst})
 		return nil
 	})
-	return tasks, err
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Group by destination to handle duplicate base names (e.g. IMG.CR2 + IMG.JPG).
+	groups := map[string][]cand{}
+	for _, c := range cands {
+		groups[c.dst] = append(groups[c.dst], c)
+	}
+
+	var tasks []task
+	var skipped []string
+	for _, group := range groups {
+		if len(group) == 1 {
+			tasks = append(tasks, task{src: group[0].src, dst: group[0].dst})
+			continue
+		}
+		// Prefer RAW files over JPEG files; otherwise first by path.
+		preferred := 0
+		for i, c := range group {
+			ext := strings.ToLower(filepath.Ext(c.src))
+			if ext != ".jpg" && ext != ".jpeg" {
+				preferred = i
+				break
+			}
+		}
+		// if all jpeg, pick first sorted
+		// sort group by src for determinism
+		// (already in walk order; sort to be safe)
+		// find preferred among sorted
+		sorted := append([]cand(nil), group...)
+		// simple sort by src
+		for i := 1; i < len(sorted); i++ {
+			for j := i; j > 0 && sorted[j-1].src > sorted[j].src; j-- {
+				sorted[j-1], sorted[j] = sorted[j], sorted[j-1]
+			}
+		}
+		preferred = 0
+		for i, c := range sorted {
+			ext := strings.ToLower(filepath.Ext(c.src))
+			if ext != ".jpg" && ext != ".jpeg" {
+				preferred = i
+				break
+			}
+		}
+		tasks = append(tasks, task{src: sorted[preferred].src, dst: sorted[preferred].dst})
+		for i, c := range sorted {
+			if i == preferred {
+				continue
+			}
+			skipped = append(skipped, c.src)
+		}
+	}
+	return tasks, skipped, nil
 }
 
 func resizeImage(img image.Image, maxDim int) image.Image {
@@ -221,24 +279,45 @@ func convertOne(src, dst string, maxDim, quality int, force bool) (string, error
 	restore := suppressStderr()
 	defer restore()
 
-	f, err := os.Open(src)
-	if err != nil {
-		return "error", err
-	}
-	defer f.Close()
+	ext := strings.ToLower(filepath.Ext(src))
+	isJpeg := ext == ".jpg" || ext == ".jpeg"
 
-	img, err := raw.Decode(f)
+	var img image.Image
 	var exifSeg []byte
-	if err == nil {
-		if tf, err2 := os.Open(src); err2 == nil {
-			if tb, err3 := raw.ExtractThumbnail(tf); err3 == nil {
-				exifSeg = extractExifSegment(tb)
-			}
-			tf.Close()
+	var err error
+
+	if isJpeg {
+		f, e := os.Open(src)
+		if e != nil {
+			return "error", e
 		}
-	}
-	if err != nil {
-		return "error", err
+		img, err = jpeg.Decode(f)
+		f.Close()
+		if err != nil {
+			return "error", err
+		}
+		// EXIF from the source JPEG itself.
+		if data, e := os.ReadFile(src); e == nil {
+			exifSeg = extractExifSegment(data)
+		}
+	} else {
+		f, e := os.Open(src)
+		if e != nil {
+			return "error", e
+		}
+		img, err = raw.Decode(f)
+		f.Close()
+		if err == nil {
+			if tf, e2 := os.Open(src); e2 == nil {
+				if tb, e3 := raw.ExtractThumbnail(tf); e3 == nil {
+					exifSeg = extractExifSegment(tb)
+				}
+				tf.Close()
+			}
+		}
+		if err != nil {
+			return "error", err
+		}
 	}
 
 	img = resizeImage(img, maxDim)
@@ -299,6 +378,7 @@ func main() {
 	quality := flag.Int("quality", 0, "JPEG quality 1-100 (0 = use default/config)")
 	workers := flag.Int("workers", 0, "Parallel workers (0 = CPU count)")
 	extsFlag := flag.String("extensions", "", "Comma-separated RAW extensions")
+	ignoreJpeg := flag.Bool("ignore-jpeg", false, "Ignore JPEG/JPG files (default: process them)")
 	force := flag.Bool("force", false, "Reprocess existing outputs")
 	dryRun := flag.Bool("dry-run", false, "List files without converting")
 	verbose := flag.Bool("verbose", false, "Per-file progress")
@@ -339,20 +419,38 @@ func main() {
 	if *workers <= 0 {
 		*workers = runtime.NumCPU()
 	}
+	explicitExts := false
 	var exts map[string]bool
 	if *extsFlag != "" {
 		parts := strings.Split(*extsFlag, ",")
 		exts = strSliceToExtSet(parts)
+		explicitExts = true
 	} else if len(cfg.Extensions) > 0 {
 		exts = strSliceToExtSet(cfg.Extensions)
+		explicitExts = true
 	} else {
-		exts = rawExtensions
+		exts = make(map[string]bool)
+		for k, v := range rawExtensions {
+			exts[k] = v
+		}
+	}
+	// Default: include JPEG/JPG unless explicitly ignored.
+	if !explicitExts && !*ignoreJpeg {
+		exts[".jpg"] = true
+		exts[".jpeg"] = true
+	}
+	if *ignoreJpeg {
+		delete(exts, ".jpg")
+		delete(exts, ".jpeg")
 	}
 	if *force == false && cfg.Force {
 		*force = true
 	}
 	if *dryRun == false && cfg.DryRun {
 		*dryRun = true
+	}
+	if !*ignoreJpeg && cfg.IgnoreJpeg {
+		*ignoreJpeg = true
 	}
 
 	if *input == "" || *output == "" {
@@ -390,12 +488,15 @@ func main() {
 		os.Exit(2)
 	}
 
-	tasks, err := collectTasks(*input, *output, exts)
+	tasks, skippedDups, err := collectTasks(*input, *output, exts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(2)
 	}
-	logf("Found %d RAW files to consider.", len(tasks))
+	logf("Found %d files to consider.", len(tasks))
+	for _, s := range skippedDups {
+		logf("SKIP (duplicate base name, preferred RAW/JPEG chosen): %s", s)
+	}
 
 	if *dryRun {
 		for _, t := range tasks {

@@ -4,7 +4,7 @@
   "size": 0,
   "quality": 85,
   "workers": 0,
-  "extensions": [".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw", ".raw"],
+  "extensions": [".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw", ".raw", ".jpg", ".jpeg"],
   "force": false,
   "dry_run": false
 }
