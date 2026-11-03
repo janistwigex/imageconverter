@@ -1,4 +1,2 @@
-github.com/vegidio/raw-go v0.0.0-20260619122347-1fd4b5c63e43 h1:MvoSumRS2BIgRNWf7lySlhnPPMpm4rJlT3AukOCGAgo=
-github.com/vegidio/raw-go v0.0.0-20260619122347-1fd4b5c63e43/go.mod h1:Cukj07fslZb1fZcazuIP3V3FY9ZmGMEc8A6nzj1AXS0=
 golang.org/x/image v0.47.0 h1:za/8gVz++PPZqmZJBNSISICN5Rrj5zixP/8K++fgmqo=
 golang.org/x/image v0.47.0/go.mod h1:IkN5o4A7vq55vXN8FWjjnhg9Rs2GOtffqsSi9mWAKYE=

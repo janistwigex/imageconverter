@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goos: darwin
+            arch: arm64
+          - os: macos-13
+            goos: darwin
+            arch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            arch: amd64
+          - os: windows-latest
+            goos: windows
+            arch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: go-task/setup-task@v1
+
+      - name: Build & package
+        run: task build os=${{ matrix.goos }} arch=${{ matrix.arch }} isPackage=true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw_${{ matrix.goos }}_${{ matrix.arch }}
+          path: build/raw_${{ matrix.goos }}_${{ matrix.arch }}.zip

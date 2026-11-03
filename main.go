@@ -208,8 +208,6 @@ func suppressStderr() func() {
 	}
 }
 
-var rawMu sync.Mutex
-
 func convertOne(src, dst string, maxDim, quality int, force bool) (string, error) {
 	if !force {
 		if info, err := os.Stat(dst); err == nil && info.Size() > 0 {
@@ -229,7 +227,6 @@ func convertOne(src, dst string, maxDim, quality int, force bool) (string, error
 	}
 	defer f.Close()
 
-	rawMu.Lock()
 	img, err := raw.Decode(f)
 	var exifSeg []byte
 	if err == nil {
@@ -240,7 +237,6 @@ func convertOne(src, dst string, maxDim, quality int, force bool) (string, error
 			tf.Close()
 		}
 	}
-	rawMu.Unlock()
 	if err != nil {
 		return "error", err
 	}

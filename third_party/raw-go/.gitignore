@@ -1,0 +1,13 @@
+.idea/
+.task/
+build/
+node_modules/
+
+# Compiled CLI binaries
+/cmd/cmd
+/cmd/raw
+/cmd/raw.exe
+
+# Local, non-distributable RAW fixtures (see tests/testdata/README.md)
+/tests/testdata/*
+!/tests/testdata/README.md

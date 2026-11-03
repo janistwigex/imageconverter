@@ -6,3 +6,5 @@ require (
 	github.com/vegidio/raw-go v0.0.0-20260619122347-1fd4b5c63e43
 	golang.org/x/image v0.47.0
 )
+
+replace github.com/vegidio/raw-go => ./third_party/raw-go
